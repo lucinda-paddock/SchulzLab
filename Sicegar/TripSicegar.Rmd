@@ -1,0 +1,104 @@
+---
+title: "Sicegar for Schulz Lab"
+output: html_document
+---
+##Introduction
+
+  Sicegar is an in-silico method of fitting and classifying data with a sigmoidal or double-sigmoidal curve, expression patterns that are commonly found in biological systems (Caglar et. al., 2018). While there are many existing software packages that can quantify and classify s-shaped growth curves, the creators of sicegar aimed to improve upon these existing methods by ensuring that reliable, automated fitting of thousands of curves can occur and by automatically classifying each as sigmoidal, double-sigmoidal, or ambiguous (unable to be fit by either model). The package was originally written to study poliovirus infection and replication at the single-cell level--the virus was labeled with green-fluorescent protein, and fluorescence was measured as the virus replicated within the cell. Generally, the pattern observed was an exponential increase in fluorescence, followed by a leveling off. However, if the cell lysed, a subsequent decrease in fluorescence followed, resulting in what is classified a a double-sigmoidal curve. If infection was unsuccessful, only random background fluorescence was observed, and the pattern was labeled ambiguous. 
+  A limitation of Sicegar is that it can only fit counts that increase initially, so all decreasing curves are labeled as ambiguous. If this is a problem for you all, just let me know--I wrote a function that addresses this. 
+  A pro of Sicegar is that it allows you to easily customize parameters it uses for fitting and categorization. Some of the ones we adjusted were the threshold AIC score, the threshold intensity ratio, and the threshold intensity at t=0. If you have a lot categorized as 'ambiguous', this is worth playing around with.  
+  
+  Important functions
+  -fitAndCategorize: From the sicegar package
+    -input: a tidy data frame containing 2 columns--"intensity" (whatever was measured) and time, for one "unit" of                measurement. In our case, this was expression level over time for one gene. Also optional inputs for parameters used for       fitting.
+    -output: a list of parameters determined by the fitted model
+  -figureModelCurves: From the sicegar package
+    -input: same as above, also 
+  -sicegarDataMapT: a function I wrote
+    -to be used with the tidyverse function 'map' for running sicegar on your entire data set. In our case, this contained          100-700 genes that we wanted to run sicegar on individually. 
+  -sicegarGraphMap: a function I wrote
+    -to be used with the tidyverse function 'map' for running sicegar on your entire data set and graphing the fitted curve         for each unit of observation. 
+    
+  Because the sicegar functions can only be run on one set of observations at a time, I used the tidyverse function "map" to run it on every gene in our dataset. Map is like a for loop in the sense that it applies the function you input to it to every member of a list. 'safely' is used a wrapper to avoid termination upon hitting an error. If one data set has an error, safely stores the result as "NULL" and moves on to the next. It returns a list for every input containing 'result' (what the function output) and 'error' (any error messages if it failed). I used the purrr function 'transpose' to separate these lists and isolate the results to make a list with all of my onset times (our parameter of interest). 
+  
+```{r}
+library(tidyverse)
+library(sicegar)
+library(purrr)
+```
+
+  
+```{r}
+##to be used with the "map" tidyverse function for running Sicegar on every unit of observation of a dataset
+##inputs: dat=data corresponding to a single gene (tidy data frame), AIC=threshold AIC score (default is -10), thresholdRatio=threshold intensity ratio (default is 0.75)
+##output: the onset time (midpoint estimate)
+
+sicegarDataMapT <- function(dat, AIC=-10, thresholdRatio=0.75){
+  dat<-dat %>% select(intensity,time)
+  Model <- fitAndCategorize(dataInput=dat, threshold_t0_max_int=1E10, threshold_dsm_tmax_IntensityRatio = thresholdRatio, threshold_AIC=AIC) #sicegar function that fits the model and categorizes. I noticed an error in the source code--the input threshold double sigmoidal (dsm) intensity ratio is used for both sigmoidal and double sigmoidal models. 
+  #if sigmoidal, return sigmoidal parameters
+  if(Model$summaryVector$decision=="sigmoidal"){
+    t<-t(Model$sigmoidalModel)[grep("midPoint_Estimate", names(Model$sigmoidalModel))] #extracting "onset time" from list of fitted parameters
+  }
+  #if double sigmoidal, return double sigmoidal parameters
+  if(Model$summaryVector$decision=="double_sigmoidal"){
+    t<-t(Model$doubleSigmoidalModel)[grep("midPoint1Param_Estimate", names(Model$doubleSigmoidalModel))] #extracting "onset time"
+  }
+  #if ambiguous, set t as -1 (or whatever arbitrary value you can filter with)
+  if(Model$summaryVector$decision=="ambiguous"){
+    t=-1
+  }
+  as.numeric(t) #converts from character and returns onset time
+}
+```
+
+Running sicegar on every gene in our data set took a few hours, but it depends on how fast your computer is. This data set has about 30 genes.
+```{r}
+
+sampleDat <- read.csv("sampleRNAseq.csv")
+tripDat<-read.table("20-11-16_deseq2_timecourse_normalized_counts.txt")
+#splitting my data by gene name, and running sicegar safely on every gene.
+#%>% sets up pipelines, left goes into right as ".""
+sicegarTlist <-sampleDat %>% split(.$geneName) %>% map(safely(~sicegarDataMapT(dat=.)))
+sicegarTlist <- sicegarTlist %>% purrr::transpose() #separating results list and error list
+sicegarTlist <- sicegarTlist$result #making results into a list
+sicegarTlist
+```
+
+Here's code for graphing the fitted curves
+```{r}
+##to be used with the "map" tidyverse function for running Sicegar and generating graphs for every unit of observation of a dataset
+##input: dat=data corresponding to a single gene (tidy data frame), AIC=threshold AIC score (default is -10), thresholdRatio=threshold intensity ratio (default is 0.75)
+##output: a graph of the fitted curve with onset time labeled
+
+sicegarGraphMap <- function(dat, AIC=-10, thresholdRatio=0.75){
+  gene=dat$geneName[1] #saves the gene name for graphing
+  dat2<-dat
+  dat<-dat %>% select(intensity,time)
+  #model fitting and categorization
+  Model <- fitAndCategorize(dataInput=dat, threshold_t0_max_int=1E10, threshold_dsm_tmax_IntensityRatio = thresholdRatio, threshold_AIC=AIC) #fits model and categorizes
+  #if ambiguous, just plot (no fitted curve)
+  if(Model$summaryVector$decision=="ambiguous"){
+      a<-ggplot(dat2, aes(x=time, y=intensity, color=type)) + geom_point() + ggtitle(paste(gene, "(ambiguous)", sep=" ")) #plotting expression levels of gene
+  }
+  #if sigmoidal, graph fitted curve
+  if(Model$summaryVector$decision=="sigmoidal"){
+    a<-figureModelCurves(dataInput=Model$normalizedInput, sigmoidalFitVector = Model$sigmoidalModel, showParameterRelatedLines = TRUE)+ggtitle(paste(gene, "Sigmoidal", sep=" ")) #sicegar function that graphs the sigmoidal model with the fitted curve displayed
+  }
+  #if double sigmoidal, graph fitted curve
+  if(Model$summaryVector$decision=="double_sigmoidal"){
+    a<-figureModelCurves(dataInput=Model$normalizedInput, doubleSigmoidalFitVector = Model$doubleSigmoidalModel, showParameterRelatedLines = TRUE)+ggtitle(paste(gene, "Impulse",sep=" ")) #sicegar function that graphs the double sigmoidal model with the fitted curve displayed
+  }
+  a
+}
+```
+
+If you just want to look at one gene at a time:
+```{r}
+dat<-sampleDat %>% filter(geneName=="rpoS") #filtering for data just for rpoS
+dat<-dat %>% select(intensity,time)
+Model <- fitAndCategorize(dataInput=dat, threshold_t0_max_int=1E10, threshold_dsm_tmax_IntensityRatio=0.75, threshold_AIC=-10)
+t(Model$sigmoidalModel) #43-element list of generated parameters for sigmoidal model
+figureModelCurves(dataInput=Model$normalizedInput, sigmoidalFitVector = Model$sigmoidalModel, showParameterRelatedLines = TRUE)+ggtitle("rpoS Sigmoidal") #graphing
+```
+
