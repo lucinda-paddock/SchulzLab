@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np 
 
 filePath = "/Users/lucypaddock/Desktop/SchulzLab/Sicegar/20-11-16_deseq2_timecourse_normalized_counts.txt"
-timeDict = {"noo_ib_1": "control1", "noo_ib_2": "control2",	"noo_ib_3": "control3",	"ib_3h_1": 180, "ib_3h_2":180, "ib_3h_3": 180, "ib_6h_1": 360,	"ib_6h_2": 360,	"ib_6h_3": 360,	"ib_12h_1":	720, "ib_12h_2": 720,	"ib_12h_3": 720,	"ib_24h_1": 1440,	"ib_24h_2": 1440,	"ib_24h_3": 1440,	"ib_48h_1": 2880,	"ib_48h_2": 2880, 	"ib_48h_3": 2880,	"ib_3d_1": 4320,	"ib_3d_2": 4320,	"ib_3d_3": 4320,	"ib_7d_1": 10080,	"ib_7d_2": 10080,	"ib_7d_3":10080,	"ib_10d_1": 14400,	"ib_10d_2": 14400,	"ib_10d_3": 14400,	"ib_14d_1": 20160,	"ib_14d_2": 20160,	"ib_14d_3": 20160}
+timeDict = {"noo_ib_1": 0, "noo_ib_2": 0,	"noo_ib_3": 0,	"ib_3h_1": 180, "ib_3h_2":180, "ib_3h_3": 180, "ib_6h_1": 360,	"ib_6h_2": 360,	"ib_6h_3": 360,	"ib_12h_1":	720, "ib_12h_2": 720,	"ib_12h_3": 720,	"ib_24h_1": 1440,	"ib_24h_2": 1440,	"ib_24h_3": 1440,	"ib_48h_1": 2880,	"ib_48h_2": 2880, 	"ib_48h_3": 2880,	"ib_3d_1": 4320,	"ib_3d_2": 4320,	"ib_3d_3": 4320,	"ib_7d_1": 10080,	"ib_7d_2": 10080,	"ib_7d_3":10080,	"ib_10d_1": 14400,	"ib_10d_2": 14400,	"ib_10d_3": 14400,	"ib_14d_1": 20160,	"ib_14d_2": 20160,	"ib_14d_3": 20160}
 
 def readTable(filePath, outputName):
     '''
@@ -22,7 +22,7 @@ def readTable(filePath, outputName):
         for treatment, time in timeDict.items():
             intensity = row[treatment]
             dataList.append([geneName, treatment, intensity, time])
-    newDf = pd.DataFrame(dataList, columns =['Gene Name', 'Treatment', 'Intensity', 'Time']) 
+    newDf = pd.DataFrame(dataList, columns =['geneName', 'treatment', 'intensity', 'time']) 
     newDf.to_csv(outputName)
 
     
